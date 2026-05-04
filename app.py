@@ -4,10 +4,21 @@ import torch.nn.functional as F
 from torchvision import models, transforms
 from PIL import Image
 import numpy as np
+import os
+import gdown
 
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+
+# -------------------------
+# AUTO DOWNLOAD MODEL
+# -------------------------
+MODEL_PATH = "resnet50A2.pth"
+
+if not os.path.exists(MODEL_PATH):
+    url = "https://drive.google.com/uc?id=18g7OAIjxBnSos-rOBuSFWIvtYsU_pnG5"
+    gdown.download(url, MODEL_PATH, quiet=False)
 
 # -------------------------
 # CONFIG
@@ -28,7 +39,7 @@ class_names = ['glioma', 'meningioma', 'notumor', 'pituitary']
 def load_model():
     model = models.resnet50(pretrained=False)
     model.fc = torch.nn.Linear(model.fc.in_features, 4)
-    model.load_state_dict(torch.load("resnet502A.pth", map_location=torch.device('cpu')))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
     model.eval()
     return model
 
@@ -54,7 +65,6 @@ uploaded_file = st.file_uploader("Upload MRI Image", type=["jpg", "jpeg", "png"]
 if uploaded_file:
 
     image = Image.open(uploaded_file).convert('RGB')
-
     input_tensor = transform(image).unsqueeze(0)
 
     # -------------------------
@@ -74,17 +84,13 @@ if uploaded_file:
     st.markdown(f"### Confidence: {confidence:.2f}%")
 
     # -------------------------
-    # PROBABILITIES (FIXED ORDER)
+    # PROBABILITIES (NAME FIRST → BAR)
     # -------------------------
     st.subheader("Class Probabilities")
 
     for i, cls in enumerate(class_names):
         percentage = probs[0][i].item() * 100
-        
-        # name first
         st.write(f"{cls}: {percentage:.2f}%")
-        
-        # then bar
         st.progress(float(probs[0][i]))
 
     st.markdown("---")
@@ -99,10 +105,15 @@ if uploaded_file:
     targets = [ClassifierOutputTarget(pred)]
 
     grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
+
+    # normalize heatmap (fix spread issue)
     grayscale_cam = (grayscale_cam - grayscale_cam.min()) / (grayscale_cam.max() + 1e-8)
 
     cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
+    # -------------------------
+    # DISPLAY IMAGES SIDE BY SIDE
+    # -------------------------
     col1, col2 = st.columns(2)
 
     with col1:
